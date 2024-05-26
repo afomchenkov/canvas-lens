@@ -1,9 +1,9 @@
 .app-header {
-  border-bottom: 1px solid #e3e1e1;
   display: flex;
-  align-items: center;
   padding: 1rem;
-  height: 1.5rem;
+  height: 2.5rem;
+  margin: 0em 3em;
+  align-items: center;
 }
 
 .app-color-picker {
@@ -20,10 +20,13 @@
   }
 }
 
+.app-loader {
+  margin-left: 3em;
+}
+
 .app-hex-color {
   display: flex;
-  justify-content: center;
-  width: 100%;
+  margin-left: 5em;
 }
 
 .app-canvas-container {

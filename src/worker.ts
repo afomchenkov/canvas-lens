@@ -31,18 +31,17 @@ type LoadedImageData = {
   height: number;
 };
 
-// move to static
-const lensRadius = 80;
-const zoomFactor = 3;
-const diameter = lensRadius * 2;
-
 class PixalatedLens {
+  public static LENS_RADIUS = 80;
+  public static ZOOM_FACTOR = 3;
+  public static DIAMETER = PixalatedLens.LENS_RADIUS * 2;
+
   private offscreenBackgroundImage: LoadedImageData | null = null;
-  private selectedColorImage: LoadedImageData | null = null;
+  // private selectedColorImage: LoadedImageData | null = null;
   private pixelatedBackgroundImage: ImageData | null = null;
   private pixelatedBackgroundImageBitmap: ImageBitmap | null = null;
   // Create an offscreen canvas to hold the zoomed circle area
-  private zoomCanvas: OffscreenCanvas = new OffscreenCanvas(diameter, diameter);
+  private zoomCanvas: OffscreenCanvas = new OffscreenCanvas(PixalatedLens.DIAMETER, PixalatedLens.DIAMETER);
 
   constructor(
     private canvas: OffscreenCanvas,
@@ -74,23 +73,23 @@ class PixalatedLens {
     );
   }
 
-  public async loadSelectedColorImageOntoCanvas(
-    imageBufferData: ArrayBufferLike,
-    imageSize: ImageSize
-  ): Promise<void> {
-    this.selectedColorImage = await this.loadImageOntoCanvas(
-      imageBufferData,
-      imageSize
-    );
-  }
+  // public async loadSelectedColorImageOntoCanvas(
+  //   imageBufferData: ArrayBufferLike,
+  //   imageSize: ImageSize
+  // ): Promise<void> {
+  //   this.selectedColorImage = await this.loadImageOntoCanvas(
+  //     imageBufferData,
+  //     imageSize
+  //   );
+  // }
 
-  public renderBackgroundImage(image: ImageBitmap): void {
-    if (!this.canvas || !this.ctx) {
+  public renderBackgroundImage(): void {
+    if (!this.canvas || !this.ctx || !this.offscreenBackgroundImage) {
       throw new Error("Canvas or background image are not initialised");
     }
 
+    const { data: image, width: imageWidth, height: imageHeight } = this.offscreenBackgroundImage;
     const { width: canvasWidth, height: canvasHeight } = this.canvas;
-    const { width: imageWidth, height: imageHeight } = image;
 
     const canvasAspectRatio = canvasWidth / canvasHeight;
     const imageAspectRatio = imageWidth / imageHeight;
@@ -117,6 +116,7 @@ class PixalatedLens {
       yStart = 0;
     }
 
+    // Clear the canvas
     this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     this.ctx.drawImage(
       image,
@@ -149,12 +149,12 @@ class PixalatedLens {
       return;
     }
 
-    const radius = lensRadius;
-    const zoom = zoomFactor;
+    const radius = PixalatedLens.LENS_RADIUS;
+    const zoom = PixalatedLens.ZOOM_FACTOR;
+    const diameter = PixalatedLens.DIAMETER;
 
     const startX = x - radius;
     const startY = y - radius;
-    const diameter = radius * 2;
 
     const zoomCtx = this.zoomCanvas.getContext("2d");
     if (!zoomCtx) {
@@ -169,6 +169,11 @@ class PixalatedLens {
       rgb = getPixel(data, x, y, width, height);
       hex = rgbToHex({ r: rgb[0], g: rgb[1], b: rgb[2] });
       zoomCtx.clearRect(0, 0, width, height);
+
+      (self.postMessage as Worker['postMessage'])({
+        type: "colorChanged",
+        hexColor: hex,
+      });
     }
 
     // Draw zoomed portion of the image onto the offscreen canvas
@@ -214,11 +219,8 @@ class PixalatedLens {
       return;
     }
 
-    const { data, width, height } = this.offscreenBackgroundImage;
-    // Clear the canvas
-    this.ctx.clearRect(0, 0, width, height);
     // Draw the background image
-    this.renderBackgroundImage(data);
+    this.renderBackgroundImage();
 
     // Draw the zoom-in lens effect
     if (mousePosition) {
