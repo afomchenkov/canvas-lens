@@ -1,24 +1,26 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { ColorPickerSvg, SelectedColorSvg } from './utils/svg.icons';
-import { loadSvgString, fetchSvgFromString, fetchImage } from './utils/dom.utils';
+import {
+  loadImageBufferWithSize,
+  loadSvgString,
+  fetchSvgFromString,
+  fetchImage
+} from './utils/dom.utils';
+import { WorkerOutgoingMessage } from './types';
 import './App.scss';
-
-// const WIDTH = 1200;
-// const HEIGHT = 800;
-
-const WIDTH = 1600;
-const HEIGHT = 1200;
 
 let worker: Worker | null = null;
 let canvas: HTMLCanvasElement | null = null;
 
-// image 3120x3900
-const IMG_LINK = 'https://images.pexels.com/photos/12043242/pexels-photo-12043242.jpeg';
-// image 9810x3798
-const LOCAL_HEAVY_IMG_LINK = './9810x3798-stuttgart.jpeg';
+// image 1920x1080 - 433Kb
+// const IMG_LINK = './1920x1080-beach-island.jpg';
+
+// image 9810x3798 - 7.5Mb
+const IMG_LINK = './9810x3798-stuttgart.jpeg';
 
 const App = () => {
   const [hexColor, setHexColor] = useState('--');
+  const [isBackgroundLoaded, setIsBackgroundLoaded] = useState(false);
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const handleColorPickerClick = () => {
@@ -30,7 +32,7 @@ const App = () => {
       const rect = canvas.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      worker.postMessage({ type: 'mousemove', x, y });
+      worker.postMessage({ type: 'mousemove', mouseMovePosition: { x, y } });
     }
   }
 
@@ -43,40 +45,31 @@ const App = () => {
     if (worker) {
       if (mainCanvasRef.current) {
 
+        // Render/init canvas only once, React in dev mode calls render
+        // twice and setState triggers re-render
         if (!canvas) {
           canvas = mainCanvasRef.current;
-          // Transfer the canvas control to OffscreenCanvas
+          // Transfer the canvas control to OffscreenCanvas in order
+          // to be able to handle the calculation in worker
           const offscreen = canvas.transferControlToOffscreen();
 
           Promise.all([
-            fetchImage(LOCAL_HEAVY_IMG_LINK),
+            fetchImage(IMG_LINK),
             fetchSvgFromString(SelectedColorSvg)
           ]).then(([backgroundImage, selectedColorSvg]) => {
             const { width: backgroundWidth, height: backgroundHeight } = backgroundImage;
-            const offscreenBackgroundImageCtx = new OffscreenCanvas(WIDTH, HEIGHT).getContext('2d');
             const { width: selectedColorWidth, height: selectedColorHeight } = selectedColorSvg;
-            const offscreenCircleImageCtx = new OffscreenCanvas(selectedColorWidth, selectedColorHeight).getContext('2d');
 
-            if (offscreenCircleImageCtx && offscreenBackgroundImageCtx && worker) {
-              // Draw background image on the canvas to get ImageDate
-              offscreenBackgroundImageCtx.clearRect(0, 0, WIDTH, HEIGHT);
-              offscreenBackgroundImageCtx.drawImage(backgroundImage, 0, 0, WIDTH, HEIGHT);
-              // Get background ImageData from the canvas to get ImageDate
-              const backgroundImageData = offscreenBackgroundImageCtx.getImageData(0, 0, WIDTH, HEIGHT);
-              const backgroundImageBufferData: ArrayBufferLike = backgroundImageData.data.buffer;
+            if (!canvas) {
+              throw new Error('Main canvas is not initialized');
+            }
 
-              // Draw circle on the canvas
-              offscreenCircleImageCtx.clearRect(0, 0, selectedColorWidth, selectedColorHeight);
-              offscreenCircleImageCtx.drawImage(selectedColorSvg, 0, 0, selectedColorWidth, selectedColorHeight);
-              // Get selected color circle ImageData from the canvas
-              const circleImageData = offscreenCircleImageCtx.getImageData(0, 0, selectedColorWidth, selectedColorHeight);
-              const circleImageBufferData: ArrayBufferLike = circleImageData.data.buffer;
-
-              // TODO: duplication - move to function logic above
-
+            if (worker) {
+              const backgroundImageBufferData: ArrayBufferLike = loadImageBufferWithSize(backgroundImage);
+              const circleImageBufferData: ArrayBufferLike = loadImageBufferWithSize(selectedColorSvg);
+              
               worker.postMessage({
                 canvas: offscreen,
-                src: IMG_LINK, // TODO: remove
                 type: 'init',
                 backgroundImageBufferData,
                 backgroundImageSize: {
@@ -94,15 +87,29 @@ const App = () => {
                 circleImageBufferData,
               ]);
             }
+
+            canvas.addEventListener('mousemove', handleMouseMove);
           });
-          
-          canvas.addEventListener('mousemove', handleMouseMove);
         }
       }
 
-      worker.onmessage = (event: MessageEvent<string>) => {
-        console.log('App ', event);
-        setHexColor('');
+      worker.onmessage = (event: MessageEvent<WorkerOutgoingMessage>) => {
+        const { type, hexColor } = event.data;
+        
+        switch (type) {
+          case 'backgroundRendered': {
+            setIsBackgroundLoaded(true);
+            break;
+          }
+          case 'colorChanged': {
+            if (hexColor) {
+              setHexColor(hexColor);
+            }
+            break;
+          }
+          default:
+            console.warn('Unsupported message from worker thread');
+        }
       };
     }
 
@@ -122,7 +129,8 @@ const App = () => {
         </div>
       </header>
       <main className='app-canvas-container'>
-        <canvas id='main-canvas' width={WIDTH} height={HEIGHT} ref={mainCanvasRef}></canvas>
+        {!isBackgroundLoaded && <h3>Loading...</h3>}
+        <canvas id='main-canvas' ref={mainCanvasRef}></canvas>
       </main>
     </>
   )

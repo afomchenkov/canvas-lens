@@ -3,3 +3,8 @@ export type RGB = {
   g: number;
   b: number;
 };
+
+export type WorkerOutgoingMessage = {
+  type: "backgroundRendered" | "colorChanged";
+  hexColor?: string;
+};
