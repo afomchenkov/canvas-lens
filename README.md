@@ -10,7 +10,8 @@
 ## Bug
 - The pixelation function sometimes calculations the color incorrectly, resulting in saving the pixel as red or blue
 - The central pixel is not outlined with white, cursor is shown instead (can be updated)
-- UI is not updated, header menu is scrolled with the whole page, menu items not visible
+- UI is not updated/ideal, header menu is scrolled with the whole page, menu items not visible
+- Tested in Chrome Version 125.0.6422.112 (Official Build) (x86_64)
 
 
 ## How to start
