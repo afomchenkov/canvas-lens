@@ -13,18 +13,28 @@ let worker: Worker | null = null;
 let canvas: HTMLCanvasElement | null = null;
 
 // image 1920x1080 - 433Kb
-// const IMG_LINK = './1920x1080-beach-island.jpg';
+// const IMG_LINK = "./1920x1080-beach-island.jpg";
 
 // image 9810x3798 - 7.5Mb
-const IMG_LINK = "./9810x3798-stuttgart.jpeg";
+// const IMG_LINK = "./9810x3798-stuttgart.jpeg";
+
+// image 10270x3836 - 11,4Mb
+const IMG_LINK = "./10270x3836-rostock.jpg";
 
 const App = () => {
   const [hexColor, setHexColor] = useState("--");
   const [isBackgroundLoaded, setIsBackgroundLoaded] = useState(false);
+  const [isLensEnabled, setIsLensEnabled] = useState(false);
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const handleColorPickerClick = () => {
-    // todo
+    setIsLensEnabled(enabled => {
+      const nextState = !enabled;
+      if (!nextState) {
+        setHexColor("#000000");
+      }
+      return nextState;
+    });
   };
 
   const handleMouseMove = (event: MouseEvent) => {
@@ -117,10 +127,22 @@ const App = () => {
 
     return () => {
       if (canvas) {
-        canvas.removeEventListener('mousemove', handleMouseMove);
+        canvas.removeEventListener("mousemove", handleMouseMove);
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (worker) {
+      worker.postMessage(
+        {
+          type: "lensToggle",
+          isLensEnabled
+        },
+        []
+      );
+    }
+  }, [isLensEnabled])
 
   return (
     <>

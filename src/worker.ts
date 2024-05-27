@@ -16,12 +16,13 @@ type MousePosition = {
 
 type WorkerIncomingMessage = {
   canvas: OffscreenCanvas;
-  type: "init" | "mousemove";
+  type: "init" | "mousemove" | "lensToggle";
   backgroundImageBufferData: ArrayBufferLike;
   backgroundImageSize: ImageSize;
   circleImageBufferData: ArrayBufferLike;
   circleImageSize: ImageSize;
   mouseMovePosition: MousePosition;
+  isLensEnabled: boolean;
 };
 
 type LoadedImageData = {
@@ -42,6 +43,8 @@ class PixalatedLens {
   private pixelatedBackgroundImageBitmap: ImageBitmap | null = null;
   // Create an offscreen canvas to hold the zoomed circle area
   private zoomCanvas: OffscreenCanvas = new OffscreenCanvas(PixalatedLens.DIAMETER, PixalatedLens.DIAMETER);
+  private previousCirclePosition: MousePosition = { x: 0, y: 0 };
+  private isLensEnabled: boolean = false;
 
   constructor(
     private canvas: OffscreenCanvas,
@@ -72,16 +75,6 @@ class PixalatedLens {
       imageSize
     );
   }
-
-  // public async loadSelectedColorImageOntoCanvas(
-  //   imageBufferData: ArrayBufferLike,
-  //   imageSize: ImageSize
-  // ): Promise<void> {
-  //   this.selectedColorImage = await this.loadImageOntoCanvas(
-  //     imageBufferData,
-  //     imageSize
-  //   );
-  // }
 
   public renderBackgroundImage(): void {
     if (!this.canvas || !this.ctx || !this.offscreenBackgroundImage) {
@@ -118,6 +111,7 @@ class PixalatedLens {
 
     // Clear the canvas
     this.ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    // Draw background image
     this.ctx.drawImage(
       image,
       xStart,
@@ -145,9 +139,11 @@ class PixalatedLens {
   }
 
   public renderZoomLens({ x, y }: MousePosition): void {
-    if (!this.pixelatedBackgroundImageBitmap) {
+    if (!this.pixelatedBackgroundImageBitmap || !this.offscreenBackgroundImage) {
       return;
     }
+
+    const { data: backgroundImage } = this.offscreenBackgroundImage;
 
     const radius = PixalatedLens.LENS_RADIUS;
     const zoom = PixalatedLens.ZOOM_FACTOR;
@@ -175,6 +171,20 @@ class PixalatedLens {
         hexColor: hex,
       });
     }
+
+    // In order to optimize re-render heavily, do the re-draw
+    // for only the old sector where the lens was present
+    const prevX = this.previousCirclePosition.x - radius - 10;
+    const prevY = this.previousCirclePosition.y - radius - 10;
+    this.ctx.clearRect(prevX, prevY, 180, 180);
+    this.ctx.drawImage(
+      backgroundImage,
+      prevX, prevY,
+      180, 180,
+      prevX, prevY,
+      180, 180,
+    );
+    this.previousCirclePosition = { x, y };
 
     // Draw zoomed portion of the image onto the offscreen canvas
     zoomCtx.drawImage(
@@ -210,8 +220,15 @@ class PixalatedLens {
     this.ctx.beginPath();
     this.ctx.arc(x, y, radius, 0, Math.PI * 2);
     this.ctx.strokeStyle = hex;
-    this.ctx.lineWidth = 10;
+    this.ctx.lineWidth = 13;
     this.ctx.stroke();
+  }
+
+  public toggleLens(isLensEnabled: boolean): void {
+    if (!isLensEnabled) {
+      this.renderBackgroundImage();
+    }
+    this.isLensEnabled = isLensEnabled;
   }
 
   public render(mousePosition?: MousePosition) {
@@ -219,11 +236,13 @@ class PixalatedLens {
       return;
     }
 
-    // Draw the background image
-    this.renderBackgroundImage();
+    if (!mousePosition) {
+      // Draw the background image on init
+      this.renderBackgroundImage();
+    }
 
     // Draw the zoom-in lens effect
-    if (mousePosition) {
+    if (mousePosition && this.isLensEnabled) {
       this.renderZoomLens(mousePosition);
     }
   }
@@ -240,49 +259,61 @@ self.onmessage = async function (event: MessageEvent<WorkerIncomingMessage>) {
     mouseMovePosition,
     backgroundImageBufferData,
     backgroundImageSize,
+    isLensEnabled,
     // circleImageBufferData,
     // circleImageSize
   } = event.data;
 
-  if (type === "init" && canvas) {
-    // Initialize OffscreenCanvas
-    offscreenCanvas = canvas;
-    offscreenCtx = offscreenCanvas.getContext("2d");
+  switch (type) {
+    case "init": {
+      // Initialize OffscreenCanvas
+      offscreenCanvas = canvas;
+      offscreenCtx = offscreenCanvas.getContext("2d");
 
-    // Preserve original background image size
-    const { width, height } = backgroundImageSize;
-    offscreenCanvas.width = width;
-    offscreenCanvas.height = height;
+      // Preserve original background image size
+      const { width, height } = backgroundImageSize;
+      offscreenCanvas.width = width;
+      offscreenCanvas.height = height;
 
-    if (offscreenCtx) {
-      pixelatedLens = new PixalatedLens(offscreenCanvas, offscreenCtx);
+      if (offscreenCtx) {
+        pixelatedLens = new PixalatedLens(offscreenCanvas, offscreenCtx);
 
-      // Load the background image
-      await pixelatedLens.loadBackgroundImageOntoCanvas(
-        backgroundImageBufferData,
-        backgroundImageSize
-      );
-      // Load selected circle image - skip rendering image and draw the circle instead
-      // await pixelatedLens.loadSelectedColorImageOntoCanvas(circleImageBufferData, circleImageSize);
-      // Load pixelated image for zoom lens
-      await pixelatedLens.loadPixelatedImage();
+        // Load the background image
+        await pixelatedLens.loadBackgroundImageOntoCanvas(
+          backgroundImageBufferData,
+          backgroundImageSize
+        );
+        // Load selected circle image - skip rendering image and draw the circle instead
+        // await pixelatedLens.loadSelectedColorImageOntoCanvas(circleImageBufferData, circleImageSize);
+        // Load pixelated image for zoom lens
+        await pixelatedLens.loadPixelatedImage();
 
-      // Wait for the next repaint when background image has been rendered on the canvas
-      requestAnimationFrame(async () => {
-        await pixelatedLens?.loadPixelatedImage();
-      });
+        // Wait for the next repaint when background image has been rendered on the canvas
+        requestAnimationFrame(async () => {
+          await pixelatedLens?.loadPixelatedImage();
+        });
 
-      pixelatedLens.render();
+        pixelatedLens.render();
 
-      (self.postMessage as Worker['postMessage'])({
-        type: "backgroundRendered",
-      });
+        (self.postMessage as Worker['postMessage'])({
+          type: "backgroundRendered",
+        });
+      }
+
+      break;
     }
-  }
-
-  if (type === "mousemove") {
-    if (pixelatedLens) {
-      pixelatedLens.render(mouseMovePosition);
+    case "mousemove": {
+      if (pixelatedLens) {
+        pixelatedLens.render(mouseMovePosition);
+      }
+      break;
+    }
+    case "lensToggle": {
+      pixelatedLens?.toggleLens(isLensEnabled);
+      break;
+    }
+    default: {
+      console.warn("Command type not supported");
     }
   }
 };
