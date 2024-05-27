@@ -1,3 +1,24 @@
+## Added features
+
+- Load large images background on the OffscreenCanvas in order to  be able to handle the calculations in WebWorker
+- Load pixelated background image on the second OffscreenCanvas for the lens effect and render over the main one so that the pixelation is not calculated on every mouse move
+- Render the HEX color of the selected pixel
+- The circle image is not rendered for the optimization purpose
+- On mouse move the selected circle is moving over the pixelated canvas, not the real background one
+- For optimization, only a portion of the main canvas is re-drawn where the previous lens location were, this optimizes the calculation heavily and does not re-redner the whole canvas
+
+## Bug
+- The pixelation function sometimes calculations the color incorrectly, resulting in saving the pixel as red or blue
+- The central pixel is not outlined with white, cursor is shown instead (can be updated)
+
+
+## How to start
+```
+npm install
+npm run start:watch
+```
+
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
