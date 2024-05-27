@@ -19,6 +19,7 @@
 npm install
 npm run start:watch
 ```
+![lens-screenshot](https://github.com/afomchenkov/canvas-lens/assets/99535774/70991d8f-bae9-4347-a706-b7a0ccf2db63)
 
 
 # React + TypeScript + Vite
